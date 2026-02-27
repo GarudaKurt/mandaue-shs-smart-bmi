@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 type RegistrationData = {
+  docId?: string; // ✅ optional — present on login, absent on new registration
   email: string;
   password: string;
   firstName: string;
@@ -36,9 +37,7 @@ type Store = {
 export const useRegistrationStore = create<Store>((set) => ({
   registration: null,
   vitals: null,
-
   setRegistration: (data) => set({ registration: data }),
   setVitals: (data) => set({ vitals: data }),
-
   reset: () => set({ registration: null, vitals: null }),
 }));
