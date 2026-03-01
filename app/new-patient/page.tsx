@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { format } from "date-fns";
-import { CalendarIcon, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 import { Input } from "@/components/ui/input";
@@ -15,30 +14,120 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-import { useRouter } from "next/navigation"
+import { useRouter } from "next/navigation";
 import { useRegistrationStore } from "@/store/useRegistrationStore";
 
+/* ===================== TYPES ===================== */
+
+type FormData = {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  sex: string;
+  dateOfBirth: string;
+  mobile: string;
+  placeOfBirth: string;
+  address: string;
+  nationality: string;
+  company: string;
+  occupation: string;
+  civilStatus: string;
+  isWalkIn: string;
+  height: string;
+  weight: string;
+  spo2: string;
+  temperature: string;
+};
+
+type FormErrors = Partial<Record<keyof FormData, string>>;
+
+/* ===================== HELPERS ===================== */
+
+const REQUIRED_FIELDS: (keyof FormData)[] = [
+  "email", "password", "firstName", "lastName", "middleName",
+  "sex", "dateOfBirth", "mobile", "placeOfBirth", "address",
+  "nationality", "company", "occupation", "civilStatus",
+  "isWalkIn", "height", "weight", "spo2", "temperature",
+];
+
+const FIELD_LABELS: Record<keyof FormData, string> = {
+  email: "Email address",
+  password: "Password",
+  firstName: "First Name",
+  lastName: "Last Name",
+  middleName: "Middle Name",
+  sex: "Sex",
+  dateOfBirth: "Date of Birth",
+  mobile: "Mobile Number",
+  placeOfBirth: "Place of Birth",
+  address: "Current Address",
+  nationality: "Nationality",
+  company: "Company",
+  occupation: "Occupation",
+  civilStatus: "Civil Status",
+  isWalkIn: "Is Patient Walk-In?",
+  height: "Height",
+  weight: "Weight",
+  spo2: "SpO2",
+  temperature: "Temperature",
+};
+
+function validate(formData: FormData): FormErrors {
+  const errors: FormErrors = {};
+
+  REQUIRED_FIELDS.forEach((field) => {
+    if (!formData[field]?.trim()) {
+      errors[field] = `${FIELD_LABELS[field]} is required.`;
+    }
+  });
+
+  if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    errors.email = "Please enter a valid email address.";
+  }
+
+  if (formData.dateOfBirth?.trim()) {
+    const dobRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
+    if (!dobRegex.test(formData.dateOfBirth)) {
+      errors.dateOfBirth = "Please enter a valid date (MM/DD/YYYY).";
+    } else {
+      const parsed = new Date(formData.dateOfBirth);
+      if (isNaN(parsed.getTime()) || parsed > new Date()) {
+        errors.dateOfBirth = "Please enter a valid past date.";
+      }
+    }
+  }
+
+  return errors;
+}
+
+/* ===================== ERROR MESSAGE COMPONENT ===================== */
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-red-500 text-xs mt-1">{message}</p>;
+}
+
+/* ===================== COMPONENT ===================== */
 
 const Registration = () => {
-  const [date, setDate] = useState<Date | undefined>();
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [submitted, setSubmitted] = useState(false);
+
   const route = useRouter();
   const setRegistration = useRegistrationStore((s) => s.setRegistration);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     email: "",
     password: "",
     firstName: "",
     lastName: "",
     middleName: "",
     sex: "",
+    dateOfBirth: "",
     mobile: "",
     placeOfBirth: "",
     address: "",
@@ -55,19 +144,49 @@ const Registration = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
-    setFormData((prev) => ({ ...prev, [id]: value }));
+    const updated = { ...formData, [id]: value };
+    setFormData(updated);
+    if (submitted) setErrors(validate(updated));
   };
 
-const handleSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
+  // Auto-inserts slashes: digits only → MM/DD/YYYY
+  const handleDobChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let digits = e.target.value.replace(/\D/g, "").slice(0, 8);
+    let formatted = digits;
+    if (digits.length >= 3) formatted = digits.slice(0, 2) + "/" + digits.slice(2);
+    if (digits.length >= 5) formatted = digits.slice(0, 2) + "/" + digits.slice(2, 4) + "/" + digits.slice(4);
+    const updated = { ...formData, dateOfBirth: formatted };
+    setFormData(updated);
+    if (submitted) setErrors(validate(updated));
+  };
 
-  setRegistration({
-    ...formData,
-    dateOfBirth: date ? date.toISOString() : null,
-  });
+  const handleSelectChange = (field: keyof FormData) => (value: string) => {
+    const updated = { ...formData, [field]: value };
+    setFormData(updated);
+    if (submitted) setErrors(validate(updated));
+  };
 
-  route.push("/smartbmi");
-};
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitted(true);
+
+    const validationErrors = validate(formData);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      const firstErrorEl = document.querySelector("[data-error='true']");
+      firstErrorEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    setRegistration({
+      ...formData,
+      dateOfBirth: new Date(formData.dateOfBirth).toISOString(),
+    });
+
+    route.push("/smartbmi");
+  };
+
+  const err = (field: keyof FormData) => (submitted ? errors[field] : undefined);
 
   return (
     <div className="relative min-h-screen bg-gray-50 flex items-center justify-center p-6">
@@ -83,69 +202,53 @@ const handleSubmit = (e: React.FormEvent) => {
 
       <form
         onSubmit={handleSubmit}
+        noValidate
         className="bg-white shadow-md rounded-lg p-8 w-full max-w-4xl"
       >
-        <h2 className="text-2xl font-bold text-center mb-6">
-          Registration Form
-        </h2>
+        <h2 className="text-2xl font-bold text-center mb-6">Registration Form</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* LEFT COLUMN */}
           <div className="space-y-4">
-            <div>
-              <Label>Email address</Label>
-              <Input
-                id="email"
-                value={formData.email}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("email")}>
+              <Label>Email address <span className="text-red-500">*</span></Label>
+              <Input id="email" type="email" value={formData.email} onChange={handleChange}
+                className={cn(err("email") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("email")} />
             </div>
 
-            <div>
-              <Label>Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("password")}>
+              <Label>Password <span className="text-red-500">*</span></Label>
+              <Input id="password" type="password" value={formData.password} onChange={handleChange}
+                className={cn(err("password") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("password")} />
             </div>
 
-            <div>
-              <Label>First Name</Label>
-              <Input
-                id="firstName"
-                value={formData.firstName}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("firstName")}>
+              <Label>First Name <span className="text-red-500">*</span></Label>
+              <Input id="firstName" value={formData.firstName} onChange={handleChange}
+                className={cn(err("firstName") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("firstName")} />
             </div>
 
-            <div>
-              <Label>Last Name</Label>
-              <Input
-                id="lastName"
-                value={formData.lastName}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("lastName")}>
+              <Label>Last Name <span className="text-red-500">*</span></Label>
+              <Input id="lastName" value={formData.lastName} onChange={handleChange}
+                className={cn(err("lastName") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("lastName")} />
             </div>
 
-            <div>
-              <Label>Middle Name</Label>
-              <Input
-                id="middleName"
-                value={formData.middleName}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("middleName")}>
+              <Label>Middle Name <span className="text-red-500">*</span></Label>
+              <Input id="middleName" value={formData.middleName} onChange={handleChange}
+                className={cn(err("middleName") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("middleName")} />
             </div>
 
-            <div>
-              <Label>Sex</Label>
-              <Select
-                onValueChange={(value) =>
-                  setFormData((prev) => ({ ...prev, sex: value }))
-                }
-              >
-                <SelectTrigger>
+            <div data-error={!!err("sex")}>
+              <Label>Sex <span className="text-red-500">*</span></Label>
+              <Select onValueChange={handleSelectChange("sex")} value={formData.sex}>
+                <SelectTrigger className={cn(err("sex") && "border-red-500 focus:ring-red-500")}>
                   <SelectValue placeholder="Select sex" />
                 </SelectTrigger>
                 <SelectContent className="bg-white">
@@ -154,99 +257,71 @@ const handleSubmit = (e: React.FormEvent) => {
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
+              <FieldError message={err("sex")} />
             </div>
 
-            <div>
-              <Label>Date of Birth</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-between text-left font-normal",
-                      !date && "text-muted-foreground",
-                    )}
-                  >
-                    {date ? format(date, "PPP") : "Pick a date"}
-                    <CalendarIcon className="h-4 w-4 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-white">
-                  <Calendar
-                    mode="single"
-                    selected={date}
-                    onSelect={setDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+            <div data-error={!!err("dateOfBirth")}>
+              <Label>Date of Birth <span className="text-red-500">*</span></Label>
+              <Input
+                id="dateOfBirth"
+                value={formData.dateOfBirth}
+                onChange={handleDobChange}
+                placeholder="MM/DD/YYYY"
+                maxLength={10}
+                className={cn(err("dateOfBirth") && "border-red-500 focus-visible:ring-red-500")}
+              />
+              <FieldError message={err("dateOfBirth")} />
             </div>
           </div>
 
           {/* RIGHT COLUMN */}
           <div className="space-y-4">
-            <div>
-              <Label>Mobile Number</Label>
-              <Input
-                id="mobile"
-                value={formData.mobile}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("mobile")}>
+              <Label>Mobile Number <span className="text-red-500">*</span></Label>
+              <Input id="mobile" value={formData.mobile} onChange={handleChange}
+                className={cn(err("mobile") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("mobile")} />
             </div>
 
-            <div>
-              <Label>Place of Birth</Label>
-              <Input
-                id="placeOfBirth"
-                value={formData.placeOfBirth}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("placeOfBirth")}>
+              <Label>Place of Birth <span className="text-red-500">*</span></Label>
+              <Input id="placeOfBirth" value={formData.placeOfBirth} onChange={handleChange}
+                className={cn(err("placeOfBirth") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("placeOfBirth")} />
             </div>
 
-            <div>
-              <Label>Current Address</Label>
-              <Input
-                id="address"
-                value={formData.address}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("address")}>
+              <Label>Current Address <span className="text-red-500">*</span></Label>
+              <Input id="address" value={formData.address} onChange={handleChange}
+                className={cn(err("address") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("address")} />
             </div>
 
-            <div>
-              <Label>Nationality</Label>
-              <Input
-                id="nationality"
-                value={formData.nationality}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("nationality")}>
+              <Label>Nationality <span className="text-red-500">*</span></Label>
+              <Input id="nationality" value={formData.nationality} onChange={handleChange}
+                className={cn(err("nationality") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("nationality")} />
             </div>
 
-            <div>
-              <Label>Company</Label>
-              <Input
-                id="company"
-                value={formData.company}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("company")}>
+              <Label>Company <span className="text-red-500">*</span></Label>
+              <Input id="company" value={formData.company} onChange={handleChange}
+                className={cn(err("company") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("company")} />
             </div>
 
-            <div>
-              <Label>Occupation</Label>
-              <Input
-                id="occupation"
-                value={formData.occupation}
-                onChange={handleChange}
-              />
+            <div data-error={!!err("occupation")}>
+              <Label>Occupation <span className="text-red-500">*</span></Label>
+              <Input id="occupation" value={formData.occupation} onChange={handleChange}
+                className={cn(err("occupation") && "border-red-500 focus-visible:ring-red-500")} />
+              <FieldError message={err("occupation")} />
             </div>
 
-            <div>
-              <Label>Civil Status</Label>
-              <Select
-                onValueChange={(value) =>
-                  setFormData((prev) => ({ ...prev, civilStatus: value }))
-                }
-              >
-                <SelectTrigger>
+            <div data-error={!!err("civilStatus")}>
+              <Label>Civil Status <span className="text-red-500">*</span></Label>
+              <Select onValueChange={handleSelectChange("civilStatus")} value={formData.civilStatus}>
+                <SelectTrigger className={cn(err("civilStatus") && "border-red-500 focus:ring-red-500")}>
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent className="bg-white">
@@ -256,42 +331,32 @@ const handleSubmit = (e: React.FormEvent) => {
                   <SelectItem value="separated">Separated</SelectItem>
                 </SelectContent>
               </Select>
+              <FieldError message={err("civilStatus")} />
             </div>
           </div>
         </div>
-        {/* Walk-in Radio Buttons */}
-        <div className="mt-6 space-y-2">
-          <Label className="text-base font-medium">Is Patient Walk-In?</Label>
 
+        <div className="mt-6 space-y-2" data-error={!!err("isWalkIn")}>
+          <Label className="text-base font-medium">
+            Is Patient Walk-In? <span className="text-red-500">*</span>
+          </Label>
           <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="isWalkIn"
-                value="yes"
+              <input type="radio" name="isWalkIn" value="yes"
                 checked={formData.isWalkIn === "yes"}
-                onChange={() =>
-                  setFormData((prev) => ({ ...prev, isWalkIn: "yes" }))
-                }
-                className="h-4 w-4 accent-green-600"
-              />
+                onChange={() => handleSelectChange("isWalkIn")("yes")}
+                className="h-4 w-4 accent-green-600" />
               Yes
             </label>
-
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="isWalkIn"
-                value="no"
+              <input type="radio" name="isWalkIn" value="no"
                 checked={formData.isWalkIn === "no"}
-                onChange={() =>
-                  setFormData((prev) => ({ ...prev, isWalkIn: "no" }))
-                }
-                className="h-4 w-4 accent-green-600"
-              />
+                onChange={() => handleSelectChange("isWalkIn")("no")}
+                className="h-4 w-4 accent-green-600" />
               No
             </label>
           </div>
+          <FieldError message={err("isWalkIn")} />
         </div>
 
         <p className="text-red-500 italic text-center mt-6">
@@ -299,10 +364,7 @@ const handleSubmit = (e: React.FormEvent) => {
         </p>
 
         <div className="flex justify-center mt-6">
-          <Button
-            type="submit"
-            className="bg-green-600 text-white hover:bg-green-700 px-8 py-3"
-          >
+          <Button type="submit" className="bg-green-600 text-white hover:bg-green-700 px-8 py-3">
             REGISTER
           </Button>
         </div>

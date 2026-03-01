@@ -82,7 +82,7 @@ type SexValue = "male" | "female" | "other" | "";
 type CivilStatusValue = "single" | "married" | "widowed" | "separated" | "";
 
 type RegistrationRecord = {
-  id: string;           // Firestore document ID
+  id: string;
   firstName: string;
   middleName: string;
   lastName: string;
@@ -95,6 +95,10 @@ type RegistrationRecord = {
   company: string;
   occupation: string;
   civilStatus: CivilStatusValue;
+  spo2: string;
+  temperature: string;
+  height: string;
+  weight: string;
 };
 
 /* ===================== HELPERS ===================== */
@@ -104,7 +108,6 @@ const getYear = (d?: Date | null): string | null =>
   d ? d.getFullYear().toString() : null;
 const cap255 = (s: string) => (s?.length > 255 ? s.slice(0, 255) : s);
 
-/** Convert a Firestore Timestamp or ISO string → JS Date (or null) */
 const toDate = (val: unknown): Date | null => {
   if (!val) return null;
   if (val instanceof Timestamp) return val.toDate();
@@ -118,7 +121,13 @@ const toDate = (val: unknown): Date | null => {
 
 /* ===================== RESPONSIVE LONG TEXT CELL ===================== */
 
-function ResponsiveLongText({ text, maxLen = 255 }: { text?: string; maxLen?: number }) {
+function ResponsiveLongText({
+  text,
+  maxLen = 255,
+}: {
+  text?: string;
+  maxLen?: number;
+}) {
   const value = (text ?? "").slice(0, maxLen) || "-";
   return (
     <div
@@ -131,60 +140,78 @@ function ResponsiveLongText({ text, maxLen = 255 }: { text?: string; maxLen?: nu
 }
 
 /* ===================== COLLECTION NAME ===================== */
-// ⚠️  Change "registrations" to whatever collection name you used when
-//     submitting from your Registration form.
 const COLLECTION = "registrations";
+
+// Columns whose cells should wrap (align-top + whitespace-normal)
+const RESPONSIVE_COLS = new Set([
+  "placeOfBirth",
+  "address",
+  "company",
+  "occupation",
+  "mobile", // ← same treatment as occupation
+]);
 
 /* ===================== MAIN COMPONENT ===================== */
 
 export default function RegistrationTable() {
-  const [data, setData]         = useState<RegistrationRecord[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [saving, setSaving]     = useState(false);
+  const [data, setData] = useState<RegistrationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize]   = useState(10);
+  const [pageSize, setPageSize] = useState(10);
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editing, setEditing]   = useState<RegistrationRecord | null>(null);
+  const [editing, setEditing] = useState<RegistrationRecord | null>(null);
   const [personQuery, setPersonQuery] = useState("");
 
   // Form fields
-  const [firstName,   setFirstName]   = useState("");
-  const [middleName,  setMiddleName]  = useState("");
-  const [lastName,    setLastName]    = useState("");
-  const [sex,         setSex]         = useState<SexValue>("");
-  const [dob,         setDob]         = useState<Date | undefined>();
-  const [mobile,      setMobile]      = useState("");
-  const [placeOfBirth,setPlaceOfBirth]= useState("");
-  const [address,     setAddress]     = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [sex, setSex] = useState<SexValue>("");
+  const [dob, setDob] = useState<Date | undefined>();
+  const [mobile, setMobile] = useState("");
+  const [placeOfBirth, setPlaceOfBirth] = useState("");
+  const [address, setAddress] = useState("");
   const [nationality, setNationality] = useState("");
-  const [company,     setCompany]     = useState("");
-  const [occupation,  setOccupation]  = useState("");
+  const [company, setCompany] = useState("");
+  const [occupation, setOccupation] = useState("");
   const [civilStatus, setCivilStatus] = useState<CivilStatusValue>("");
+  const [spo2, setSpo2] = useState("");
+  const [temperature, setTemperature] = useState("");
+  const [weight, setWeight] = useState("");
+  const [height, setHeight] = useState("");
 
   /* ===================== FETCH FROM FIRESTORE ===================== */
 
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const q = query(collection(firestore, COLLECTION), orderBy("createdAt", "desc"));
+      const q = query(
+        collection(firestore, COLLECTION),
+        orderBy("createdAt", "desc"),
+      );
       const snapshot = await getDocs(q);
       const records: RegistrationRecord[] = snapshot.docs.map((d) => {
         const raw = d.data();
         return {
-          id:           d.id,
-          firstName:    raw.firstName    ?? "",
-          middleName:   raw.middleName   ?? "",
-          lastName:     raw.lastName     ?? "",
-          sex:          (raw.sex         ?? "") as SexValue,
-          dob:          toDate(raw.dateOfBirth ?? raw.dob),
-          mobile:       raw.mobile       ?? "",
+          id: d.id,
+          firstName: raw.firstName ?? "",
+          middleName: raw.middleName ?? "",
+          lastName: raw.lastName ?? "",
+          sex: (raw.sex ?? "") as SexValue,
+          dob: toDate(raw.dateOfBirth ?? raw.dob),
+          mobile: raw.mobile ?? "",
           placeOfBirth: raw.placeOfBirth ?? "",
-          address:      raw.address      ?? "",
-          nationality:  raw.nationality  ?? "",
-          company:      raw.company      ?? "",
-          occupation:   raw.occupation   ?? "",
-          civilStatus:  (raw.civilStatus ?? "") as CivilStatusValue,
+          address: raw.address ?? "",
+          nationality: raw.nationality ?? "",
+          company: raw.company ?? "",
+          occupation: raw.occupation ?? "",
+          civilStatus: (raw.civilStatus ?? "") as CivilStatusValue,
+          spo2: raw.spo2 ?? "",
+          temperature: raw.temperature ?? "",
+          height: raw.height ?? "",
+          weight: raw.weight ?? "",
         };
       });
       setData(records);
@@ -203,7 +230,9 @@ export default function RegistrationTable() {
 
   const availableYears = useMemo(() => {
     const yrs = Array.from(
-      new Set(data.map((r) => getYear(r.dob)).filter((y): y is string => Boolean(y)))
+      new Set(
+        data.map((r) => getYear(r.dob)).filter((y): y is string => Boolean(y)),
+      ),
     ).sort((a, b) => Number(a) - Number(b));
     return yrs;
   }, [data]);
@@ -211,19 +240,17 @@ export default function RegistrationTable() {
   const filtered = useMemo(() => {
     let result = data;
 
-    // Year filter
     if (yearFilter !== "all") {
       result = result.filter((r) => getYear(r.dob) === yearFilter);
     }
 
-    // Person search (first / middle / last name)
     if (personQuery.trim()) {
       const q = personQuery.toLowerCase();
       result = result.filter(
         (r) =>
           r.firstName.toLowerCase().includes(q) ||
           r.middleName.toLowerCase().includes(q) ||
-          r.lastName.toLowerCase().includes(q)
+          r.lastName.toLowerCase().includes(q),
       );
     }
 
@@ -233,9 +260,9 @@ export default function RegistrationTable() {
   /* ===================== TABLE COLUMNS ===================== */
 
   const columns: ColumnDef<RegistrationRecord>[] = [
-    { accessorKey: "firstName",  header: "First Name" },
+    { accessorKey: "firstName", header: "First Name" },
     { accessorKey: "middleName", header: "Middle Name" },
-    { accessorKey: "lastName",   header: "Last Name" },
+    { accessorKey: "lastName", header: "Last Name" },
     {
       accessorKey: "sex",
       header: "Sex",
@@ -250,11 +277,20 @@ export default function RegistrationTable() {
       header: "Date of Birth",
       cell: ({ row }) => fmtDOB(row.original.dob),
     },
-    { accessorKey: "mobile", header: "Mobile" },
+    {
+      // ← now uses ResponsiveLongText, same as occupation
+      accessorKey: "mobile",
+      header: "Mobile",
+      cell: ({ row }) => (
+        <ResponsiveLongText text={row.original.mobile} maxLen={20} />
+      ),
+    },
     {
       accessorKey: "placeOfBirth",
       header: "Place of Birth",
-      cell: ({ row }) => <ResponsiveLongText text={row.original.placeOfBirth} />,
+      cell: ({ row }) => (
+        <ResponsiveLongText text={row.original.placeOfBirth} />
+      ),
     },
     {
       accessorKey: "address",
@@ -265,30 +301,56 @@ export default function RegistrationTable() {
     {
       accessorKey: "company",
       header: "Company",
-      cell: ({ row }) => <ResponsiveLongText text={row.original.company} maxLen={100} />,
+      cell: ({ row }) => (
+        <ResponsiveLongText text={row.original.company} maxLen={100} />
+      ),
     },
     {
       accessorKey: "occupation",
       header: "Occupation",
-      cell: ({ row }) => <ResponsiveLongText text={row.original.occupation} maxLen={100} />,
+      cell: ({ row }) => (
+        <ResponsiveLongText text={row.original.occupation} maxLen={100} />
+      ),
     },
     {
       accessorKey: "civilStatus",
       header: "Civil Status",
       cell: ({ row }) => {
         const map: Record<CivilStatusValue, string> = {
-          single: "Single", married: "Married",
-          widowed: "Widowed", separated: "Separated", "": "-",
+          single: "Single",
+          married: "Married",
+          widowed: "Widowed",
+          separated: "Separated",
+          "": "-",
         };
         return map[row.original.civilStatus] || "-";
       },
+    },
+    {
+      accessorKey: "spo2",
+      header: "SpO2",
+      cell: ({ row }) => row.original.spo2 || "-",
+    },
+    {
+      accessorKey: "temperature",
+      header: "Temperature",
+      cell: ({ row }) => row.original.temperature || "-",
+    },
+    {
+      accessorKey: "height",
+      header: "Height",
+      cell: ({ row }) => row.original.height || "-",
+    },
+    {
+      accessorKey: "weight",
+      header: "Weight",
+      cell: ({ row }) => row.original.weight || "-",
     },
     {
       id: "actions",
       header: () => <div className="text-center">Actions</div>,
       cell: ({ row }) => (
         <div className="flex gap-1 justify-center">
-          {/* EDIT */}
           <Button
             size="icon"
             variant="ghost"
@@ -296,8 +358,6 @@ export default function RegistrationTable() {
           >
             <Pencil className="h-4 w-4 text-blue-600" />
           </Button>
-
-          {/* DELETE */}
           <Button
             size="icon"
             variant="ghost"
@@ -343,17 +403,32 @@ export default function RegistrationTable() {
     setOccupation(r.occupation);
     setCivilStatus(r.civilStatus);
     setIsEditOpen(true);
+    setSpo2(r.spo2);
+    setTemperature(r.temperature);
+    setHeight(r.height);
+    setWeight(r.weight);
   };
 
   const resetForm = () => {
     setEditing(null);
-    setFirstName(""); setMiddleName(""); setLastName("");
-    setSex(""); setDob(undefined); setMobile("");
-    setPlaceOfBirth(""); setAddress(""); setNationality("");
-    setCompany(""); setOccupation(""); setCivilStatus("");
+    setFirstName("");
+    setMiddleName("");
+    setLastName("");
+    setSex("");
+    setDob(undefined);
+    setMobile("");
+    setPlaceOfBirth("");
+    setAddress("");
+    setNationality("");
+    setCompany("");
+    setOccupation("");
+    setCivilStatus("");
+    setSpo2("");
+    setTemperature("");
+    setHeight("");
+    setWeight("");
   };
 
-  /** ADD or UPDATE */
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -363,33 +438,33 @@ export default function RegistrationTable() {
       middleName,
       lastName,
       sex,
-      // Store as ISO string so it's consistent with your Registration form
       dateOfBirth: dob ? dob.toISOString() : null,
       mobile,
       placeOfBirth: cap255(placeOfBirth),
-      address:      cap255(address),
+      address: cap255(address),
       nationality,
       company,
       occupation,
       civilStatus,
+      spo2,
+      temperature,
+      height,
+      weight,
       updatedAt: serverTimestamp(),
     };
 
     try {
       if (editing) {
-        // ✏️  UPDATE existing document
         const ref = doc(firestore, COLLECTION, editing.id);
         await updateDoc(ref, payload);
       } else {
-        // ➕  ADD new document
         await addDoc(collection(firestore, COLLECTION), {
           ...payload,
           createdAt: serverTimestamp(),
         });
         setPageIndex(0);
       }
-
-      await fetchRecords();   // Re-fetch to reflect changes
+      await fetchRecords();
       setIsEditOpen(false);
       resetForm();
     } catch (err) {
@@ -399,7 +474,6 @@ export default function RegistrationTable() {
     }
   };
 
-  /** DELETE */
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this record?")) return;
     try {
@@ -430,26 +504,36 @@ export default function RegistrationTable() {
         <h4 className="text-xl font-semibold">Patient Records</h4>
 
         <div className="flex gap-4 flex-wrap items-center">
-
           {/* PERSON SEARCH */}
           <div className="w-[200px]">
             <Input
               value={personQuery}
-              onChange={(e) => { setPersonQuery(e.target.value); setPageIndex(0); }}
+              onChange={(e) => {
+                setPersonQuery(e.target.value);
+                setPageIndex(0);
+              }}
               placeholder="Search person…"
             />
           </div>
 
           {/* YEAR FILTER */}
           {availableYears.length > 0 && (
-            <Select value={yearFilter} onValueChange={(v) => { setYearFilter(v); setPageIndex(0); }}>
+            <Select
+              value={yearFilter}
+              onValueChange={(v) => {
+                setYearFilter(v);
+                setPageIndex(0);
+              }}
+            >
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Filter by year" />
               </SelectTrigger>
               <SelectContent className="bg-white">
                 <SelectItem value="all">All Years</SelectItem>
                 {availableYears.map((y) => (
-                  <SelectItem key={y} value={y}>{y}</SelectItem>
+                  <SelectItem key={y} value={y}>
+                    {y}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -476,11 +560,20 @@ export default function RegistrationTable() {
           </Select>
 
           {/* ADD / EDIT SHEET */}
-          <Sheet open={isEditOpen} onOpenChange={(o) => { setIsEditOpen(o); if (!o) resetForm(); }}>
+          <Sheet
+            open={isEditOpen}
+            onOpenChange={(o) => {
+              setIsEditOpen(o);
+              if (!o) resetForm();
+            }}
+          >
             <SheetTrigger asChild>
               <Button
                 className="bg-green-600 hover:bg-green-700 text-white"
-                onClick={() => { resetForm(); setIsEditOpen(true); }}
+                onClick={() => {
+                  resetForm();
+                  setIsEditOpen(true);
+                }}
               >
                 Add New
               </Button>
@@ -498,26 +591,43 @@ export default function RegistrationTable() {
                   <div className="space-y-4">
                     <div>
                       <Label htmlFor="s_firstName">First Name</Label>
-                      <Input id="s_firstName" value={firstName}
+                      <Input
+                        id="s_firstName"
+                        value={firstName}
                         onChange={(e) => setFirstName(e.target.value)}
-                        placeholder="Enter first name" className="hover:border-blue-700" />
+                        placeholder="Enter first name"
+                        className="hover:border-blue-700"
+                      />
                     </div>
                     <div>
                       <Label htmlFor="s_lastName">Last Name</Label>
-                      <Input id="s_lastName" value={lastName}
+                      <Input
+                        id="s_lastName"
+                        value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
-                        placeholder="Enter last name" className="hover:border-blue-700" />
+                        placeholder="Enter last name"
+                        className="hover:border-blue-700"
+                      />
                     </div>
                     <div>
                       <Label htmlFor="s_middleName">Middle Name</Label>
-                      <Input id="s_middleName" value={middleName}
+                      <Input
+                        id="s_middleName"
+                        value={middleName}
                         onChange={(e) => setMiddleName(e.target.value)}
-                        placeholder="Enter middle name" className="hover:border-blue-700" />
+                        placeholder="Enter middle name"
+                        className="hover:border-blue-700"
+                      />
                     </div>
                     <div>
                       <Label>Sex</Label>
-                      <Select value={sex} onValueChange={(v: SexValue) => setSex(v)}>
-                        <SelectTrigger><SelectValue placeholder="Select sex" /></SelectTrigger>
+                      <Select
+                        value={sex}
+                        onValueChange={(v: SexValue) => setSex(v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select sex" />
+                        </SelectTrigger>
                         <SelectContent className="bg-white">
                           <SelectItem value="male">Male</SelectItem>
                           <SelectItem value="female">Female</SelectItem>
@@ -529,22 +639,38 @@ export default function RegistrationTable() {
                       <Label>Date of Birth</Label>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button type="button" variant="outline"
-                            className={cn("w-full justify-between text-left font-normal", !dob && "text-muted-foreground")}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-between text-left font-normal",
+                              !dob && "text-muted-foreground",
+                            )}
+                          >
                             {dob ? format(dob, "PPP") : "Pick a date"}
                             <CalendarIcon className="h-4 w-4 opacity-50" />
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0 bg-white" align="start">
-                          <Calendar mode="single" selected={dob} onSelect={setDob} initialFocus />
+                          <Calendar
+                            mode="single"
+                            selected={dob}
+                            onSelect={setDob}
+                            initialFocus
+                          />
                         </PopoverContent>
                       </Popover>
                     </div>
                     <div>
                       <Label htmlFor="s_mobile">Mobile Number</Label>
-                      <Input id="s_mobile" type="tel" value={mobile}
+                      <Input
+                        id="s_mobile"
+                        type="tel"
+                        value={mobile}
                         onChange={(e) => setMobile(e.target.value)}
-                        placeholder="09XXXXXXXXX" className="hover:border-blue-700" />
+                        placeholder="09XXXXXXXXX"
+                        className="hover:border-blue-700"
+                      />
                     </div>
                   </div>
 
@@ -552,46 +678,83 @@ export default function RegistrationTable() {
                   <div className="space-y-4">
                     <div>
                       <Label htmlFor="s_placeOfBirth">Place of Birth</Label>
-                      <textarea id="s_placeOfBirth" value={placeOfBirth}
+                      <textarea
+                        id="s_placeOfBirth"
+                        value={placeOfBirth}
                         onChange={(e) => setPlaceOfBirth(e.target.value)}
-                        maxLength={255} rows={3} placeholder="Enter place of birth"
-                        className="w-full border rounded p-2 bg-white hover:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y" />
-                      <p className="text-xs text-gray-500 mt-1">{placeOfBirth.length}/255</p>
+                        maxLength={255}
+                        rows={3}
+                        placeholder="Enter place of birth"
+                        className="w-full border rounded p-2 bg-white hover:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {placeOfBirth.length}/255
+                      </p>
                     </div>
                     <div>
                       <Label htmlFor="s_address">Current Address</Label>
-                      <textarea id="s_address" value={address}
+                      <textarea
+                        id="s_address"
+                        value={address}
                         onChange={(e) => setAddress(e.target.value)}
-                        maxLength={255} rows={3} placeholder="Enter current address"
-                        className="w-full border rounded p-2 bg-white hover:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y" />
-                      <p className="text-xs text-gray-500 mt-1">{address.length}/255</p>
+                        maxLength={255}
+                        rows={3}
+                        placeholder="Enter current address"
+                        className="w-full border rounded p-2 bg-white hover:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {address.length}/255
+                      </p>
                     </div>
                     <div>
                       <Label htmlFor="s_nationality">Nationality</Label>
-                      <Input id="s_nationality" value={nationality}
+                      <Input
+                        id="s_nationality"
+                        value={nationality}
                         onChange={(e) => setNationality(e.target.value)}
-                        placeholder="Enter nationality" className="hover:border-blue-700" />
+                        placeholder="Enter nationality"
+                        className="hover:border-blue-700"
+                      />
                     </div>
                     <div>
                       <Label htmlFor="s_company">Company</Label>
-                      <textarea id="s_company" value={company}
+                      <textarea
+                        id="s_company"
+                        value={company}
                         onChange={(e) => setCompany(e.target.value)}
-                        maxLength={100} rows={2} placeholder="Enter company"
-                        className="w-full border rounded p-2 bg-white hover:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y" />
-                      <p className="text-xs text-gray-500 mt-1">{company.length}/100</p>
+                        maxLength={100}
+                        rows={2}
+                        placeholder="Enter company"
+                        className="w-full border rounded p-2 bg-white hover:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {company.length}/100
+                      </p>
                     </div>
                     <div>
                       <Label htmlFor="s_occupation">Occupation</Label>
-                      <textarea id="s_occupation" value={occupation}
+                      <textarea
+                        id="s_occupation"
+                        value={occupation}
                         onChange={(e) => setOccupation(e.target.value)}
-                        maxLength={100} rows={2} placeholder="Enter occupation"
-                        className="w-full border rounded p-2 bg-white hover:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y" />
-                      <p className="text-xs text-gray-500 mt-1">{occupation.length}/100</p>
+                        maxLength={100}
+                        rows={2}
+                        placeholder="Enter occupation"
+                        className="w-full border rounded p-2 bg-white hover:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {occupation.length}/100
+                      </p>
                     </div>
                     <div>
                       <Label>Civil Status</Label>
-                      <Select value={civilStatus} onValueChange={(v: CivilStatusValue) => setCivilStatus(v)}>
-                        <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+                      <Select
+                        value={civilStatus}
+                        onValueChange={(v: CivilStatusValue) => setCivilStatus(v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
                         <SelectContent className="bg-white">
                           <SelectItem value="single">Single</SelectItem>
                           <SelectItem value="married">Married</SelectItem>
@@ -601,6 +764,55 @@ export default function RegistrationTable() {
                       </Select>
                     </div>
                   </div>
+
+                  {/* Vital Signs — spans full width of the 2-col grid */}
+                  <div className="md:col-span-2">
+                    <h3 className="text-sm font-semibold text-gray-700 border-t pt-4 mb-3">
+                      Vital Signs
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <Label htmlFor="s_spo2">SpO2 (%)</Label>
+                        <Input
+                          id="s_spo2"
+                          value={spo2}
+                          onChange={(e) => setSpo2(e.target.value)}
+                          placeholder="e.g. 98"
+                          className="hover:border-blue-700"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="s_temperature">Temperature (°C)</Label>
+                        <Input
+                          id="s_temperature"
+                          value={temperature}
+                          onChange={(e) => setTemperature(e.target.value)}
+                          placeholder="e.g. 36.6"
+                          className="hover:border-blue-700"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="s_height">Height (cm)</Label>
+                        <Input
+                          id="s_height"
+                          value={height}
+                          onChange={(e) => setHeight(e.target.value)}
+                          placeholder="e.g. 165"
+                          className="hover:border-blue-700"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="s_weight">Weight (kg)</Label>
+                        <Input
+                          id="s_weight"
+                          value={weight}
+                          onChange={(e) => setWeight(e.target.value)}
+                          placeholder="e.g. 60"
+                          className="hover:border-blue-700"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <p className="text-red-500 italic text-center mt-2">
@@ -608,18 +820,30 @@ export default function RegistrationTable() {
                 </p>
 
                 <div className="mt-4 space-y-2">
-                  <Button type="submit" disabled={saving}
-                    className="w-full bg-black hover:bg-[#2C2C2C] text-white">
+                  <Button
+                    type="submit"
+                    disabled={saving}
+                    className="w-full bg-black hover:bg-[#2C2C2C] text-white"
+                  >
                     {saving ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         {editing ? "Updating…" : "Saving…"}
                       </span>
-                    ) : (editing ? "Update" : "Save")}
+                    ) : editing ? (
+                      "Update"
+                    ) : (
+                      "Save"
+                    )}
                   </Button>
-                  <Button type="button"
+                  <Button
+                    type="button"
                     className="w-full bg-gray-200 hover:bg-gray-300 text-black"
-                    onClick={() => { setIsEditOpen(false); resetForm(); }}>
+                    onClick={() => {
+                      setIsEditOpen(false);
+                      resetForm();
+                    }}
+                  >
                     Cancel
                   </Button>
                 </div>
@@ -637,14 +861,20 @@ export default function RegistrationTable() {
         </div>
       ) : (
         <>
-          {/* TABLE */}
-          <div className="overflow-x-auto">
-            <Table className="w-full bg-[#F3F3F3] table-fixed rounded-lg">
+          {/* TABLE
+              - outer div: overflow-x-auto enables horizontal scrolling
+              - Table: w-max lets columns size to content; min-w-full fills
+                the container when there's enough room               */}
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <Table className="w-max min-w-full bg-[#F3F3F3]">
               <TableHeader>
                 {table.getHeaderGroups().map((g) => (
                   <TableRow key={g.id}>
                     {g.headers.map((h) => (
-                      <TableHead key={h.id} className="bg-[#2C2C2C] text-white">
+                      <TableHead
+                        key={h.id}
+                        className="bg-[#2C2C2C] text-white whitespace-nowrap"
+                      >
                         {flexRender(h.column.columnDef.header, h.getContext())}
                       </TableHead>
                     ))}
@@ -655,7 +885,10 @@ export default function RegistrationTable() {
               <TableBody>
                 {table.getRowModel().rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={columns.length} className="text-center py-8 text-gray-400">
+                    <TableCell
+                      colSpan={columns.length}
+                      className="text-center py-8 text-gray-400"
+                    >
                       No records found.
                     </TableCell>
                   </TableRow>
@@ -663,12 +896,24 @@ export default function RegistrationTable() {
                   table.getRowModel().rows.map((row) => (
                     <TableRow key={row.id}>
                       {row.getVisibleCells().map((cell) => {
-                        const key = (cell.column.columnDef as any).accessorKey as string | undefined;
-                        const isLong = key === "placeOfBirth" || key === "address" || key === "company" || key === "occupation";
+                        const key = (cell.column.columnDef as any)
+                          .accessorKey as string | undefined;
+                        const isResponsive = key
+                          ? RESPONSIVE_COLS.has(key)
+                          : false;
                         return (
-                          <TableCell key={cell.id}
-                            className={isLong ? "align-top whitespace-normal" : "whitespace-nowrap"}>
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          <TableCell
+                            key={cell.id}
+                            className={
+                              isResponsive
+                                ? "align-top whitespace-normal"
+                                : "whitespace-nowrap"
+                            }
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext(),
+                            )}
                           </TableCell>
                         );
                       })}
@@ -690,7 +935,8 @@ export default function RegistrationTable() {
                   <PaginationItem key={i}>
                     <PaginationLink
                       isActive={pageIndex === i}
-                      onClick={() => table.setPageIndex(i)}>
+                      onClick={() => table.setPageIndex(i)}
+                    >
                       {i + 1}
                     </PaginationLink>
                   </PaginationItem>
