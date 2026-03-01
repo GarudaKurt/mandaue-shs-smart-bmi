@@ -37,10 +37,6 @@ type FormData = {
   occupation: string;
   civilStatus: string;
   isWalkIn: string;
-  height: string;
-  weight: string;
-  spo2: string;
-  temperature: string;
 };
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
@@ -51,7 +47,7 @@ const REQUIRED_FIELDS: (keyof FormData)[] = [
   "email", "password", "firstName", "lastName", "middleName",
   "sex", "dateOfBirth", "mobile", "placeOfBirth", "address",
   "nationality", "company", "occupation", "civilStatus",
-  "isWalkIn", "height", "weight", "spo2", "temperature",
+  "isWalkIn",
 ];
 
 const FIELD_LABELS: Record<keyof FormData, string> = {
@@ -69,11 +65,7 @@ const FIELD_LABELS: Record<keyof FormData, string> = {
   company: "Company",
   occupation: "Occupation",
   civilStatus: "Civil Status",
-  isWalkIn: "Is Patient Walk-In?",
-  height: "Height",
-  weight: "Weight",
-  spo2: "SpO2",
-  temperature: "Temperature",
+  isWalkIn: "Is Patient Walk-In?"
 };
 
 function validate(formData: FormData): FormErrors {
@@ -136,10 +128,6 @@ const Registration = () => {
     occupation: "",
     civilStatus: "",
     isWalkIn: "",
-    height: "",
-    weight: "",
-    spo2: "",
-    temperature: "",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
