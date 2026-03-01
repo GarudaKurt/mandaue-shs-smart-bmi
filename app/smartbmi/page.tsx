@@ -33,6 +33,7 @@ export default function SmartBMICards() {
   const [isStale, setIsStale] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
+  const [touched, setTouched] = useState(false);
 
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { registration, setVitals, reset } = useRegistrationStore();
@@ -94,29 +95,30 @@ export default function SmartBMICards() {
     };
   }, []);
 
-const handleSubmit = async () => {
-  if (!height || !weight || !spo2 || !temperature) {
-    setError("Please complete all fields before submitting.");
-    return;
-  }
+  const handleSubmit = async () => {
+    setTouched(true);
 
-  if (!registration) {
-    setError("Registration data missing. Please restart.");
-    return;
-  }
+    if (!height || !weight || !spo2 || !temperature) {
+      setError("Please complete all fields before submitting.");
+      return;
+    }
 
-  const vitalsData = { height, weight, spo2, temperature };
-  setVitals(vitalsData);
+    if (!registration) {
+      setError("Registration data missing. Please restart.");
+      return;
+    }
+
+    setError(""); 
+    const vitalsData = { height, weight, spo2, temperature };
+    setVitals(vitalsData);
 
     try {
       if (registration.docId) {
-        // ✅ LOGIN flow — update the existing document
         await updateDoc(doc(firestore, "registrations", registration.docId), {
           ...vitalsData,
           updatedAt: serverTimestamp(),
         });
       } else {
-        // ✅ NEW REGISTRATION flow — create a new document
         const uuid = uuidv4();
         await setDoc(doc(firestore, "registrations", uuid), {
           ...registration,
@@ -126,13 +128,13 @@ const handleSubmit = async () => {
       }
 
       setOpen(true);
+      setTouched(false);
       reset();
     } catch (err) {
       console.error(err);
       setError("Failed to submit data.");
     }
   };
-
 
   useEffect(() => {
     if (!open) return;
@@ -147,6 +149,11 @@ const handleSubmit = async () => {
     setSpo2("");
     setTemperature("");
   };
+
+  const fieldClass = (value: string) =>
+    touched && !value
+      ? "border-red-500 ring-1 ring-red-500 focus-visible:ring-red-500"
+      : "";
 
   const steps = [
     {
@@ -210,10 +217,10 @@ const handleSubmit = async () => {
         {steps.map((step, index) => (
           <Card
             key={index}
-            // ✅ rounded-xl + overflow-hidden ensures the image respects border radius
-            className="overflow-hidden rounded-xl bg-white flex flex-col shadow-sm"
+            className={`overflow-hidden rounded-xl bg-white flex flex-col shadow-sm ${
+              touched && !step.value ? "ring-2 ring-red-400" : "" // ✅ highlight entire card if empty
+            }`}
           >
-            {/* ✅ Image: full width, fixed height, no wrapper div needed */}
             {step.image && (
               <img
                 src={step.image}
@@ -222,7 +229,6 @@ const handleSubmit = async () => {
               />
             )}
 
-            {/* ✅ Only title + description here — no duplicate label below */}
             <CardContent className="px-2.5 pt-2 pb-0">
               <p className="text-xs font-semibold text-gray-800">{step.title}</p>
               <p className="text-[11px] text-muted-foreground leading-tight">
@@ -231,15 +237,20 @@ const handleSubmit = async () => {
             </CardContent>
 
             <CardFooter className="px-2.5 pt-1.5 pb-2.5 flex flex-col items-start gap-1 mt-auto">
-              {/* ✅ Removed duplicate label — description already shown in CardContent above */}
               <Input
                 type="number"
                 placeholder={step.placeholder}
                 value={step.value}
                 onChange={step.onChange}
-                className="h-7 text-xs px-2"
-                contentEditable={false}
+                className={`h-7 text-xs px-2 ${fieldClass(step.value)}`} // ✅ red border on empty input
+                required
               />
+              {/* ✅ Inline per-field error message */}
+              {touched && !step.value && (
+                <p className="text-[10px] text-red-500 leading-tight">
+                  This field is required.
+                </p>
+              )}
             </CardFooter>
           </Card>
         ))}
